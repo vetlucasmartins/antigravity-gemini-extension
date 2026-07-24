@@ -90,6 +90,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {}
   }
 
+  async function logToPersistentBridgeMemory(logData) {
+    try {
+      await fetch('http://127.0.0.1:8765/api/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: logData.category || 'Automação Extensão',
+          prompt: logData.prompt || '',
+          actions: logData.actions || '',
+          status: logData.status || 'Concluído',
+          result_summary: logData.result_summary || '',
+          url: logData.url || (currentTabContext ? currentTabContext.url : ''),
+          notes: logData.notes || 'Painel da Extensão'
+        })
+      });
+    } catch (e) {}
+  }
+
   async function loadChatMemory() {
     try {
       const data = await chrome.storage.local.get(['antigravity_task_history']);
@@ -292,6 +310,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   refreshContextBtn.addEventListener('click', refreshPageContext);
   await refreshPageContext();
 
+  async function fetchRecentMemoryHistory() {
+    try {
+      const res = await fetch('http://127.0.0.1:8765/api/history').catch(() => null);
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.history)) {
+          return data.history;
+        }
+      }
+    } catch (e) {}
+    try {
+      const local = await chrome.storage.local.get(['antigravity_task_history']);
+      return local.antigravity_task_history || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
   // 4. Autonomous Computer Use Vision Loop Engine
   async function runAutonomousComputerUseLoop(userGoal) {
     const maxSteps = 8;
@@ -299,6 +335,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     let isDone = false;
 
     appendSystemMsg(`🤖 Loop Agêntico Autônomo Iniciado: "${userGoal}"`);
+
+    const recentHistory = await fetchRecentMemoryHistory();
+    let memoryContextStr = '';
+    if (recentHistory && recentHistory.length > 0) {
+      const recentItems = recentHistory.slice(-6).map(h => 
+        `- [${h.Categoria || h.role || 'Ação'}]: ${h['Instrução / Prompt'] || h.text || h.actions || ''} -> ${h.Status || 'Concluído'}`
+      ).join('\n');
+      memoryContextStr = `\n[MEMÓRIA PERSISTENTE RECENTE - NÃO REPETIR TAREFAS JÁ CONCLUÍDAS]:\n${recentItems}\n`;
+    }
 
     while (step < maxSteps && !isDone) {
       step++;
@@ -314,7 +359,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      const computerUseSystemInstruction = `Você é o Antigravity Autonomous Computer Use Agent. Seu objetivo é navegar e interagir autonomamente na aba ativa para cumprir a meta do usuário.
+      const computerUseSystemInstruction = `Você é o Antigravity Autonomous Computer Use Agent (Universal Web Copilot). Seu objetivo é navegar e interagir autonomamente na aba ativa para cumprir a meta do usuário.
+Você atua em QUALQUER site (Upwork, LinkedIn, X, Threads, plataformas freelance, etc.).
+${memoryContextStr}
 A cada etapa, analise o contexto/tela e responda EXCLUSIVAMENTE com um objeto JSON válido seguindo a estrutura:
 
 {
@@ -413,6 +460,14 @@ A cada etapa, analise o contexto/tela e responda EXCLUSIVAMENTE com um objeto JS
         isDone = true;
         footerStatus.textContent = 'Status: Loop Autônomo Concluído!';
         appendSystemMsg(`✅ Meta Concluída com Sucesso!`);
+        logToPersistentBridgeMemory({
+          category: 'Loop Autônomo',
+          prompt: userGoal,
+          actions: `Concluído no passo ${step}/${maxSteps}`,
+          status: 'Sucesso',
+          result_summary: actionObj.explanation || 'Meta concluída',
+          url: currentTabContext ? currentTabContext.url : ''
+        });
         break;
       }
 
@@ -442,6 +497,15 @@ A cada etapa, analise o contexto/tela e responda EXCLUSIVAMENTE com um objeto JS
           distance: 500
         }, r));
       }
+
+      logToPersistentBridgeMemory({
+        category: 'Passo Autônomo',
+        prompt: userGoal,
+        actions: `${actionObj.action}: ${actionObj.target || actionObj.text || 'N/A'}`,
+        status: 'Executado',
+        result_summary: actionObj.explanation || '',
+        url: tab ? tab.url : ''
+      });
 
       await new Promise(r => setTimeout(r, 2200));
     }
@@ -525,6 +589,56 @@ A cada etapa, analise o contexto/tela e responda EXCLUSIVAMENTE com um objeto JS
   });
 
   // Automations Presets
+  const wfUpworkHunter = document.getElementById('wf-upwork-hunter');
+  const wfSocialPost = document.getElementById('wf-social-post');
+  const wfBioTuner = document.getElementById('wf-bio-tuner');
+  const wfMemoryHistory = document.getElementById('wf-memory-history');
+
+  if (wfUpworkHunter) {
+    wfUpworkHunter.addEventListener('click', async () => {
+      const goal = 'Analise a vaga ativa no Upwork, confira orçamento e exigência de Connects, consulte o histórico para não repetir propostas e elabore uma proposta persuasiva e objetiva economizando Connects.';
+      appendUserMsg(goal);
+      await runAutonomousComputerUseLoop(goal);
+    });
+  }
+
+  if (wfSocialPost) {
+    wfSocialPost.addEventListener('click', async () => {
+      const goal = 'Elabore uma postagem de texto envolvente e profissional adaptada para X (Twitter), Threads e LinkedIn com base no conteúdo da página ativa.';
+      appendUserMsg(goal);
+      if (autoLoopCheck.checked) {
+        await runAutonomousComputerUseLoop(goal);
+      }
+    });
+  }
+
+  if (wfBioTuner) {
+    wfBioTuner.addEventListener('click', async () => {
+      const goal = 'Analise este perfil/configurações de conta e crie/digite uma bio otimizada e de alta conversão para a plataforma.';
+      appendUserMsg(goal);
+      if (autoLoopCheck.checked) {
+        await runAutonomousComputerUseLoop(goal);
+      }
+    });
+  }
+
+  if (wfMemoryHistory) {
+    wfMemoryHistory.addEventListener('click', async () => {
+      const history = await fetchRecentMemoryHistory();
+      outputSection.classList.remove('hidden');
+      if (!history || history.length === 0) {
+        appendSystemMsg('📑 Nenhuma tarefa registrada na memória persistente ainda.');
+        outputContent.textContent = 'Histórico de memória vazio.';
+      } else {
+        appendSystemMsg(`📑 Exibindo ${history.length} últimas tarefas da Memória Persistente (CSV/MD):`);
+        const formatted = history.map((item, idx) => 
+          `${idx + 1}. [${item.Timestamp || item.timestamp || 'N/A'}] [${item.Categoria || item.role || 'Ação'}]: ${item['Instrução / Prompt'] || item.text || item.actions} -> Status: ${item.Status || 'Concluído'}`
+        ).join('\n\n');
+        outputContent.textContent = formatted;
+      }
+    });
+  }
+
   if (wfAutoLoop) {
     wfAutoLoop.addEventListener('click', async () => {
       const goal = 'Procure vagas de desenvolvedor remoto adequadas ao perfil e candidate-se ou apresente o resumo das vagas.';

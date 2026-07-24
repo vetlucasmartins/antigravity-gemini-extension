@@ -51,6 +51,15 @@ class BridgeHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if self.path == '/api/history':
+            try:
+                import task_memory_logger
+                history = task_memory_logger.get_recent_history(limit=20)
+                self.send_json({"success": True, "history": history})
+            except Exception as e:
+                self.send_json({"success": False, "error": str(e)}, 500)
+            return
+
         if self.path == '/extension/poll':
             last_extension_ping = time.time()
             try:
@@ -71,6 +80,31 @@ class BridgeHandler(BaseHTTPRequestHandler):
             payload = json.loads(body_bytes.decode('utf-8')) if body_bytes else {}
         except Exception as e:
             self.send_json({"error": "Invalid JSON body"}, 400)
+            return
+
+        if self.path == '/api/log':
+            try:
+                import task_memory_logger
+                cat = payload.get("category", "Automação")
+                prompt = payload.get("prompt", "")
+                actions = payload.get("actions", "")
+                status = payload.get("status", "Concluído")
+                summary = payload.get("result_summary", "")
+                url = payload.get("url", "")
+                notes = payload.get("notes", "")
+
+                task_id = task_memory_logger.log_task_entry(
+                    category=cat,
+                    prompt=prompt,
+                    actions=actions,
+                    status=status,
+                    result_summary=summary,
+                    url=url,
+                    notes=notes
+                )
+                self.send_json({"success": True, "taskId": task_id})
+            except Exception as e:
+                self.send_json({"success": False, "error": str(e)}, 500)
             return
 
         if self.path == '/api/command':

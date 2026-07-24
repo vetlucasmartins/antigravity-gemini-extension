@@ -80,12 +80,143 @@ function typeIntoElement(targetEl, text) {
   }
 }
 
+function extractSmartSemanticContext() {
+  const selectedText = window.getSelection() ? window.getSelection().toString().trim() : '';
+
+  // 1. Detect platform & extract metadata
+  let platformHeader = '';
+  const host = window.location.hostname.toLowerCase();
+
+  if (host.includes('upwork.com')) {
+    const jobTitleEl = document.querySelector('h1, h2.job-title, [data-test="JobTitle"]');
+    const budgetEl = document.querySelector('[data-test="BudgetAmount"], [data-test="job-type"]');
+    const connectsEl = document.querySelector('[data-test="connects-required"]');
+    const title = jobTitleEl ? jobTitleEl.innerText.trim() : '';
+    const budget = budgetEl ? budgetEl.innerText.trim() : '';
+    const connects = connectsEl ? connectsEl.innerText.trim() : '';
+    if (title) {
+      platformHeader = `[PLATAFORMA: Upwork | Vaga: ${title} | Orçamento: ${budget || 'N/A'} | Connects Exigidos: ${connects || 'N/A'}]\n`;
+    }
+  } else if (host.includes('x.com') || host.includes('twitter.com')) {
+    platformHeader = `[PLATAFORMA: X (Twitter)]\n`;
+  } else if (host.includes('threads.net')) {
+    platformHeader = `[PLATAFORMA: Threads]\n`;
+  } else if (host.includes('linkedin.com')) {
+    platformHeader = `[PLATAFORMA: LinkedIn]\n`;
+  }
+
+  // 2. Find main content container(s)
+  const selectors = [
+    // Upwork
+    '[data-test="job-details"]',
+    '#job-details',
+    '.job-details-section',
+    '.up-card',
+    '[data-test="job-tile-list"]',
+    '.job-tile',
+    // X (Twitter) & Threads
+    '[data-testid="primaryColumn"]',
+    '[data-testid="tweet"]',
+    '[aria-label="Threads"]',
+    // LinkedIn & General Freelance / Content
+    '.jobs-search__job-details',
+    '.jobs-description',
+    '.feed-shared-update-v2',
+    'main',
+    '[role="main"]',
+    'article',
+    '#content',
+    '#main-content',
+    '.post-content',
+    '.entry-content',
+    '.profile-settings',
+    '.container'
+  ];
+
+  let mainContainer = null;
+  for (const s of selectors) {
+    const el = document.querySelector(s);
+    if (el && el.innerText && el.innerText.trim().length > 100) {
+      mainContainer = el;
+      break;
+    }
+  }
+
+  const targetNode = mainContainer ? mainContainer.cloneNode(true) : document.body.cloneNode(true);
+
+  // 3. Remove noisy elements (headers, nav, footers, scripts, styles, svgs, ad banners, cookie notices)
+  const noiseSelectors = [
+    'script', 'style', 'noscript', 'svg', 'iframe',
+    'header', 'nav', 'footer', 'aside',
+    '.global-nav', '#global-nav', '.artdeco-global-nav',
+    '.cookie-banner', '#cookie-consent', '.ad-banner', '.adsbygoogle',
+    '[aria-hidden="true"]'
+  ];
+
+  noiseSelectors.forEach(selector => {
+    try {
+      const elements = targetNode.querySelectorAll(selector);
+      elements.forEach(e => e.remove());
+    } catch (e) {}
+  });
+
+  // 4. Extract text lines, deduplicate & clean
+  const rawText = targetNode.innerText || '';
+  const lines = rawText.split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+
+  const cleanLines = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (i === 0 || lines[i] !== lines[i - 1]) {
+      cleanLines.push(lines[i]);
+    }
+  }
+
+  let formattedText = platformHeader + cleanLines.join('\n');
+
+  // Cap at ~5000 chars of high signal text
+  if (formattedText.length > 5000) {
+    formattedText = formattedText.slice(0, 5000) + '\n...[conteúdo resumido para economia de tokens]';
+  }
+
+  return {
+    selectedText,
+    pageText: formattedText,
+    isScopedToMain: !!mainContainer
+  };
+}
+
 function clickElementByTextOrSelector(target) {
-  let el = document.querySelector(target);
-  
+  let el = null;
+  try {
+    el = document.querySelector(target);
+  } catch (e) {}
+
   if (!el) {
     const allClickables = Array.from(document.querySelectorAll('button, a, input[type="submit"], div[role="button"], span[role="button"], li'));
-    el = allClickables.find(item => item.innerText && item.innerText.trim().toLowerCase().includes(target.toLowerCase()));
+    const targetLower = target.toLowerCase().trim();
+
+    let bestEl = null;
+    let bestScore = -1;
+
+    for (const item of allClickables) {
+      if (!item.innerText) continue;
+      const itemText = item.innerText.trim().toLowerCase();
+      if (!itemText.includes(targetLower)) continue;
+
+      let score = 0;
+      if (itemText === targetLower) score += 50;
+      if (item.closest('main, [role="main"], article, .jobs-search__job-details')) score += 30;
+      if (!item.closest('header, nav, footer, .global-nav')) score += 20;
+      if (item.offsetWidth > 0 && item.offsetHeight > 0) score += 10;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestEl = item;
+      }
+    }
+    el = bestEl;
   }
 
   if (el) {
@@ -100,19 +231,15 @@ function clickElementByTextOrSelector(target) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'GET_PAGE_CONTEXT') {
     try {
-      const selectedText = window.getSelection() ? window.getSelection().toString().trim() : '';
-      const bodyClone = document.body.cloneNode(true);
-      const scriptsAndStyles = bodyClone.querySelectorAll('script, style, noscript, svg, nav, footer');
-      scriptsAndStyles.forEach(e => e.remove());
-      
-      const fullText = bodyClone.innerText.replace(/\n\s*\n/g, '\n').slice(0, 15000);
+      const contextData = extractSmartSemanticContext();
 
       sendResponse({
         success: true,
         title: document.title,
         url: window.location.href,
-        selectedText: selectedText,
-        pageText: fullText,
+        selectedText: contextData.selectedText,
+        pageText: contextData.pageText,
+        isScopedToMain: contextData.isScopedToMain,
         viewport: { width: window.innerWidth, height: window.innerHeight }
       });
     } catch (err) {
