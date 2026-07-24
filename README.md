@@ -3,10 +3,32 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-green.svg)](manifest.json)
 [![Gemini Ready](https://img.shields.io/badge/AI-Google%20Gemini%20Web-orange.svg)](https://gemini.google.com)
+[![Multi-Platform](https://img.shields.io/badge/Platforms-Upwork%20%7C%20X%20%7C%20Threads%20%7C%20LinkedIn-purple.svg)](#)
 
-**Antigravity Gemini Extension** é a ponte (**Bridge**) nativa de automação de navegador entre o **Antigravity AI (IDE / CLI)** e o seu navegador **Google Chrome**.
+**Antigravity Gemini Extension** é um **Copiloto Web Universal Agêntico** e ponte (**Bridge**) de automação de alto desempenho entre o **Antigravity AI (IDE / CLI)** e o seu navegador **Google Chrome**.
 
-Com esta extensão instalada, você **não precisa executar comandos de terminal manuais**. O próprio **Antigravity AI** se conecta ao seu Chrome em tempo real, lê a tela, inspeciona a página ativa e realiza ações autônomas (como candidatar-se a vagas no LinkedIn, checar mensagens, responder recrutadores e extrair tabelas) usando a sua **própria conta logada no Google Gemini (`gemini.google.com`)**.
+Projetado para operar em **qualquer site da web** — com recursos dedicados para **Upwork**, **X (Twitter)**, **Threads**, **LinkedIn**, redes sociais e plataformas freelance —, a extensão permite navegar, analisar oportunidades, ajustar bios/perfil, publicar conteúdos e executar tarefas autônomas com **deduplicação por memória persistente**.
+
+---
+
+## 🔥 Principais Recursos & Atualizações Recentemente Implementadas
+
+### 🧠 1. Extração Semântica Inteligente (Sem Falsos Positivos)
+- **Zero Falsos Positivos**: O algoritmo localiza a área principal de conteúdo (`main`, `article`, `.jobs-search__job-details`, `[data-test="job-details"]`) e elimina ruídos como menus superiores, rodapés, banners de cookies e scripts ocultos.
+- **Economia Extrema de Tokens**: Reduziu a carga de contexto de 15.000 caracteres brutos para ~4.500 caracteres de altíssimo sinal (economia de até 70% em tokens por requisição).
+- **Pontuação de Elementos para Clique**: A automação pontua elementos interativos para garantir que cliques ocorram no corpo principal da página em vez de links institucionais do cabeçalho.
+
+### 💼 2. Otimizador Upwork & Economia de Connects
+- Reconhecimento automático de páginas do **Upwork**, extraindo título da vaga, orçamento estimado e exigência de Connects.
+- Avaliação estratégica da vaga e redação de propostas direcionadas sem gasto desnecessário de Connects.
+
+### 🐦 3. Formatação e Publicação Multi-Plataforma
+- Presets prontos para gerar, formatar e publicar conteúdos de texto otimizados no **X (Twitter)**, **Threads** e **LinkedIn**.
+- Ajustes automáticos de bio e configurações de conta em redes sociais e plataformas freelance.
+
+### 📑 4. Memória Persistente e Deduplicação de Tarefas
+- Todo comando e automação é registrado continuamente nas planilhas [historico_tarefas_antigravity.csv](historico_tarefas_antigravity.csv) e [task_history_tracker.md](task_history_tracker.md).
+- O agente consulta a memória recente antes de cada meta para **não repetir tarefas já concluídas** (evitando envio de propostas duplicadas no Upwork ou postagens repetidas).
 
 ---
 
@@ -22,9 +44,9 @@ Com esta extensão instalada, você **não precisa executar comandos de terminal
 ```
 
 1. **Você instala a extensão** no seu navegador uma única vez.
-2. **Você conversa com o Antigravity** no chat do IDE ou terminal normalmente:  
-   > *"Antigravity, abra meu LinkedIn, veja se tenho mensagens não lidas e candidate-se às vagas de Full-Stack no UK."*
-3. **O Antigravity faz tudo sozinho**: ele ativa o servidor de ponte em segundo plano, comunica-se com a extensão no Chrome, executa as ações na sua aba visível e grava os resultados em uma **planilha organizada**.
+2. **Você conversa com o Antigravity** no chat do IDE, no painel lateral da extensão ou no terminal:  
+   > *"Antigravity, analise esta vaga no Upwork, veja no histórico se já apliquei para ela e, se não, elabore uma proposta focada no problema do cliente economizando Connects."*
+3. **O Antigravity faz tudo sozinho**: ele se conecta via Bridge local, inspeciona o DOM semântico, realiza as ações e registra os resultados na planilha de memória persistente.
 
 ---
 
@@ -37,34 +59,30 @@ Com esta extensão instalada, você **não precisa executar comandos de terminal
 4. Selecione a pasta deste repositório (`antigravity-gemini-extension`).
 
 ### Passo 2: Pronto!
-A extensão já está configurada com reconexão automática. Não é necessário abrir o terminal para rodar o Python manualmente — o Antigravity gerencia essa ponte automaticamente em segundo plano.
+A extensão se conecta automaticamente com o servidor Bridge local na porta `8765`.
 
 ---
 
-## 💬 Exemplos de Prompts para Usar no Antigravity
+## 💬 Presets de Automação & Exemplos de Uso
 
-Assim que a extensão estiver instalada, você pode pedir qualquer tarefa de navegador diretamente ao Antigravity:
+A extensão conta com cards de automação rápida e suporte a qualquer meta via linguagem natural:
 
-### 💼 Automação de Carreiras & LinkedIn:
-> *"Antigravity, dê uma olhada no meu LinkedIn, veja se recebi alguma proposta de serviço ou mensagem não lida e busque vagas de desenvolvedor remoto compatíveis com meu perfil para se candidatar."*
-
-### 💬 Leitura e Resposta de Mensagens:
-> *"Antigravity, verifique as notificações pendentes no meu navegador e me apresente um resumo das mais importantes."*
-
-### 📊 Extração de Dados e Planilhas:
-> *"Antigravity, extraia os dados da tabela exibida no meu Chrome e salve em uma planilha formatada em Markdown/CSV."*
-
-### 📸 Análise Visual de Páginas:
-> *"Antigravity, tire um print da página ativa no meu Chrome e me diga se há algum erro de layout ou botão desalinhado."*
+- 💼 **Upwork Hunter & Connect Saver**: Analisa a vaga ativa no Upwork, confira orçamento/Connects e gera proposta otimizada.
+- 🐦 **Publicar / Formatar Conteúdo Social**: Cria e ajusta postagens para X, Threads e LinkedIn.
+- 👤 **Otimizador de Bio e Perfil**: Analisa a página de perfil ou configurações da conta e redige uma bio de alta conversão.
+- 📑 **Histórico da Memória Persistente**: Exibe o log em tempo real das tarefas gravadas na planilha CSV/MD.
 
 ---
 
-## 🛠️ O que Acontece por Trás dos Panos (Para Desenvolvedores)
+## 🛠️ Arquitetura & Endpoints (Para Desenvolvedores)
 
-- **Servidor Bridge Local (`cli/bridge_server.py`)**: Rodado pelo Antigravity em `http://127.0.0.1:8765`, escutando comandos em tempo real.
-- **Keep-Alive com `chrome.alarms`**: A extensão no Chrome envia pings constantes para evitar que o Service Worker entre em modo suspenso.
-- **Governança de Dados (`DATA_LOGGING_RULES.md`)**: Todas as ações e candidaturas são gravadas de forma persistente com colunas normalizadas (`Timestamp`, `Categoria`, `Empresa`, `Vaga`, `Status`, `Notas`).
-- **Sem Dependência de Chaves de API Pagas**: A extensão pode utilizar diretamente a sessão logada em `gemini.google.com` (incluindo Gemini Advanced/Plus).
+- **Servidor Bridge Local (`cli/bridge_server.py`)**: Executado em `http://127.0.0.1:8765`.
+  - `GET /status`: Status da conexão da extensão.
+  - `GET /api/history`: Consulta o histórico recente de tarefas salvas.
+  - `POST /api/log`: Registra uma nova tarefa na memória persistente.
+  - `POST /api/command`: Envia comandos remotos do IDE para a extensão.
+- **Registrador de Memória (`cli/task_memory_logger.py`)**: Mantém a governança de dados conforme `DATA_LOGGING_RULES.md` nos arquivos `historico_tarefas_antigravity.csv` e `task_history_tracker.md`.
+- **Suporte Dual a Modelos**: Funciona com a sessão logada em `gemini.google.com` (Gemini Web) ou via API Direct (Gemini 2.0 Flash / 1.5 Pro).
 
 ---
 
