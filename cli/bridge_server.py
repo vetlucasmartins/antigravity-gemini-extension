@@ -91,6 +91,21 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 command_events.pop(cmd_id, None)
 
             if finished and result is not None:
+                try:
+                    import task_memory_logger
+                    action_name = payload.get("action", "COMMAND")
+                    target = payload.get("target") or payload.get("url") or payload.get("selector") or ""
+                    res_summary = f"Title: {result.get('title', '')} | URL: {result.get('url', '')}" if result.get('title') else json.dumps(result, ensure_ascii=False)[:100]
+                    task_memory_logger.log_task_entry(
+                        category=action_name,
+                        prompt=f"Ação: {action_name}",
+                        actions=f"Target: {target}",
+                        status="Sucesso" if result.get("success", True) else "Falha",
+                        result_summary=res_summary,
+                        url=result.get("url", target)
+                    )
+                except Exception as log_err:
+                    pass
                 self.send_json(result)
             else:
                 self.send_json({

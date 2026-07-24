@@ -76,12 +76,55 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  async function saveChatMessageToMemory(role, text) {
+    try {
+      const data = await chrome.storage.local.get(['antigravity_task_history']);
+      const history = data.antigravity_task_history || [];
+      history.push({
+        id: `msg_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        role: role,
+        text: text
+      });
+      await chrome.storage.local.set({ antigravity_task_history: history.slice(-100) });
+    } catch (e) {}
+  }
+
+  async function loadChatMemory() {
+    try {
+      const data = await chrome.storage.local.get(['antigravity_task_history']);
+      const history = data.antigravity_task_history || [];
+      if (history.length > 0) {
+        history.forEach(item => {
+          if (item.role === 'user') {
+            const userDiv = document.createElement('div');
+            userDiv.className = 'chat-msg user';
+            userDiv.textContent = item.text;
+            chatMessages.appendChild(userDiv);
+          } else if (item.role === 'agent') {
+            const agentDiv = document.createElement('div');
+            agentDiv.className = 'chat-msg agent';
+            agentDiv.textContent = item.text;
+            chatMessages.appendChild(agentDiv);
+          } else if (item.role === 'system') {
+            const sysDiv = document.createElement('div');
+            sysDiv.className = 'chat-msg system';
+            sysDiv.textContent = item.text;
+            chatMessages.appendChild(sysDiv);
+          }
+        });
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    } catch (e) {}
+  }
+
   function appendUserMsg(text) {
     const userDiv = document.createElement('div');
     userDiv.className = 'chat-msg user';
     userDiv.textContent = text;
     chatMessages.appendChild(userDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    saveChatMessageToMemory('user', text);
   }
 
   function appendAgentMsg(text) {
@@ -90,6 +133,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     agentDiv.textContent = text;
     chatMessages.appendChild(agentDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    saveChatMessageToMemory('agent', text);
     return agentDiv;
   }
 
@@ -99,6 +143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     sysDiv.textContent = text;
     chatMessages.appendChild(sysDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    saveChatMessageToMemory('system', text);
   }
 
   // Check Web Session Login State
@@ -154,6 +199,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   await loadSettings();
+  await loadChatMemory();
 
   toggleSettingsBtn.addEventListener('click', async () => {
     settingsDrawer.classList.toggle('hidden');
