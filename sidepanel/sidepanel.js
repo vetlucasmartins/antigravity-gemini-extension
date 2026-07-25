@@ -137,15 +137,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function appendUserMsg(text) {
+    if (chatMessages.lastElementChild && chatMessages.lastElementChild.textContent === text && chatMessages.lastElementChild.classList.contains('user')) {
+      return chatMessages.lastElementChild;
+    }
     const userDiv = document.createElement('div');
     userDiv.className = 'chat-msg user';
     userDiv.textContent = text;
     chatMessages.appendChild(userDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     saveChatMessageToMemory('user', text);
+    return userDiv;
   }
 
   function appendAgentMsg(text) {
+    if (chatMessages.lastElementChild && chatMessages.lastElementChild.textContent === text && chatMessages.lastElementChild.classList.contains('agent')) {
+      return chatMessages.lastElementChild;
+    }
     const agentDiv = document.createElement('div');
     agentDiv.className = 'chat-msg agent';
     agentDiv.textContent = text;
@@ -156,12 +163,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function appendSystemMsg(text) {
+    if (chatMessages.lastElementChild && chatMessages.lastElementChild.textContent === text && chatMessages.lastElementChild.classList.contains('system')) {
+      return chatMessages.lastElementChild;
+    }
     const sysDiv = document.createElement('div');
     sysDiv.className = 'chat-msg system';
     sysDiv.textContent = text;
     chatMessages.appendChild(sysDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     saveChatMessageToMemory('system', text);
+    return sysDiv;
   }
 
   // Check Web Session Login State
@@ -339,10 +350,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const recentHistory = await fetchRecentMemoryHistory();
     let memoryContextStr = '';
     if (recentHistory && recentHistory.length > 0) {
-      const recentItems = recentHistory.slice(-6).map(h => 
-        `- [${h.Categoria || h.role || 'Ação'}]: ${h['Instrução / Prompt'] || h.text || h.actions || ''} -> ${h.Status || 'Concluído'}`
-      ).join('\n');
-      memoryContextStr = `\n[MEMÓRIA PERSISTENTE RECENTE - NÃO REPETIR TAREFAS JÁ CONCLUÍDAS]:\n${recentItems}\n`;
+      const recentItems = recentHistory.slice(-4).map(h => 
+        `• ${h.Categoria || h.role || 'Ação'}: ${((h['Instrução / Prompt'] || h.text || h.actions || '')).slice(0, 60)} (${h.Status || 'OK'})`
+      ).join(' | ');
+      memoryContextStr = `[HISTÓRICO RECENTE]: ${recentItems}\n`;
     }
 
     while (step < maxSteps && !isDone) {
@@ -542,7 +553,7 @@ A cada etapa, analise o contexto/tela e responda EXCLUSIVAMENTE com um objeto JS
         fullPrompt += `[USER SELECTED TEXT]:\n"${currentTabContext.selectedText}"\n\n`;
       }
       if (includeTextCheck.checked && currentTabContext?.pageText) {
-        fullPrompt += `[PAGE EXTRACTED TEXT]:\n${currentTabContext.pageText.slice(0, 8000)}\n\n`;
+        fullPrompt += `[PAGE EXTRACTED TEXT]:\n${currentTabContext.pageText.slice(0, 2500)}\n\n`;
       }
       fullPrompt += `[USER INSTRUCTION]:\n${msg}`;
 

@@ -113,7 +113,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           attempts++;
 
           const isStreaming = !!document.querySelector('button[aria-label*="Parar"], button[aria-label*="Stop"]');
-          const responses = document.querySelectorAll('model-response, .model-response-text, .response-container-content, message-content');
+          let responses = Array.from(document.querySelectorAll('model-response'));
+          if (responses.length === 0) {
+            responses = Array.from(document.querySelectorAll('.model-response-text'));
+          }
+          if (responses.length === 0) {
+            responses = Array.from(document.querySelectorAll('message-content'));
+          }
           
           if (responses.length > 0) {
             const lastResponse = responses[responses.length - 1];

@@ -41,18 +41,29 @@ def init_spreadsheets():
             f.write("| ID | Timestamp | Categoria | Instrução / Prompt | Ações Executadas | Status | Resumo do Resultado | URL / Contexto |\n")
             f.write("|---|---|---|---|---|---|---|---|\n")
 
+_last_logged_entry = {"hash": "", "time": 0, "task_id": ""}
+
 def log_task_entry(category, prompt, actions="", status="Concluído", result_summary="", url="", notes=""):
-    """Appends a new task entry to both CSV and Markdown spreadsheets."""
+    """Appends a new task entry to both CSV and Markdown spreadsheets (with 3s deduplication)."""
+    global _last_logged_entry
     init_spreadsheets()
-    
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    task_id = f"task_{int(time.time())}"
     
     clean_prompt = prompt.replace("\n", " ").replace("|", "-")
     clean_actions = actions.replace("\n", " ").replace("|", "-")
     clean_result = result_summary.replace("\n", " ").replace("|", "-")
     clean_url = url.replace("\n", "").replace("|", "-")
     clean_notes = notes.replace("\n", " ").replace("|", "-")
+
+    entry_hash = f"{category}:{clean_prompt[:50]}:{clean_actions[:50]}:{clean_url}"
+    now = time.time()
+
+    # Skip duplicate logging within 3 seconds
+    if _last_logged_entry["hash"] == entry_hash and (now - _last_logged_entry["time"]) < 3.0:
+        return _last_logged_entry["task_id"]
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    task_id = f"task_{int(now)}"
+    _last_logged_entry = {"hash": entry_hash, "time": now, "task_id": task_id}
 
     # Append to CSV
     row = [task_id, timestamp, category, clean_prompt, clean_actions, status, clean_result, clean_url, clean_notes]
