@@ -154,6 +154,58 @@ function readSectionContent(target) {
   return rawText.slice(0, 3000);
 }
 
+// Search element by text or accessible label across interactive elements & click it
+function clickElementByText(textQuery) {
+  if (!textQuery) return { success: false, error: 'Texto de busca não especificado' };
+
+  const targetLower = textQuery.toLowerCase().trim();
+  const interactiveSelectors = [
+    'button',
+    'a[href]',
+    'input[type="submit"]',
+    'input[type="button"]',
+    '[role="button"]',
+    '[role="link"]',
+    '[role="menuitem"]',
+    '[role="option"]',
+    'div.share-box-feed-entry__trigger',
+    'span',
+    'div'
+  ];
+
+  const candidates = Array.from(document.querySelectorAll(interactiveSelectors.join(',')))
+    .filter(isElementVisible);
+
+  // 1. Exact match on innerText or accessible name
+  let el = candidates.find(item => {
+    const accName = getAccessibleName(item).toLowerCase();
+    const text = (item.innerText || '').toLowerCase().trim();
+    return accName === targetLower || text === targetLower;
+  });
+
+  // 2. Partial match on accessible name or innerText
+  if (!el) {
+    el = candidates.find(item => {
+      const accName = getAccessibleName(item).toLowerCase();
+      const text = (item.innerText || '').toLowerCase().trim();
+      return (accName.length > 0 && accName.includes(targetLower)) || (text.length > 0 && text.includes(targetLower));
+    });
+  }
+
+  if (el) {
+    highlightElement(el);
+    try {
+      el.focus();
+    } catch (e) {}
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+    el.click();
+    return { success: true, target: textQuery, tagName: el.tagName, text: getAccessibleName(el) };
+  }
+
+  return { success: false, error: `Nenhum elemento clicável contendo "${textQuery}" foi localizado.` };
+}
+
 // Click element by ID e1, e2 or CSS selector / text fallback
 function clickElement(targetStr) {
   if (!targetStr) return { success: false, error: 'Target não especificado' };
@@ -163,6 +215,12 @@ function clickElement(targetStr) {
     el = window.__antigravityElementMap.get(targetStr);
   }
 
+  if (el && !document.body.contains(el)) {
+    // Stale element reference - refresh tree
+    extractSyntheticA11yTree();
+    el = window.__antigravityElementMap.get(targetStr) || null;
+  }
+
   if (!el) {
     try {
       el = document.querySelector(targetStr);
@@ -170,14 +228,19 @@ function clickElement(targetStr) {
   }
 
   if (!el) {
-    // Search text match across interactive elements
-    const allClickables = Array.from(document.querySelectorAll('button, a, input[type="submit"], div[role="button"], span[role="button"]'));
-    const targetLower = targetStr.toLowerCase().trim();
-    el = allClickables.find(item => item.innerText && item.innerText.trim().toLowerCase().includes(targetLower));
+    // Fallback to text search
+    return clickElementByText(targetStr);
   }
 
   if (el && isElementVisible(el)) {
     highlightElement(el);
+    try {
+      el.focus();
+    } catch (e) {}
+    
+    // Dispatch full mouse event sequence for complex UI frameworks
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
     el.click();
     return { success: true, target: targetStr, tagName: el.tagName, text: getAccessibleName(el) };
   }
@@ -185,11 +248,17 @@ function clickElement(targetStr) {
   return { success: false, error: `Elemento "${targetStr}" não encontrado ou invisível.` };
 }
 
-// Type into element by ID or selector
+// Type into element by ID or selector (Compatible with LinkedIn, React, contenteditable, Draft.js)
 function typeIntoElement(targetStr, text) {
   let el = null;
+
   if (targetStr && window.__antigravityElementMap.has(targetStr)) {
     el = window.__antigravityElementMap.get(targetStr);
+  }
+
+  if (el && !document.body.contains(el)) {
+    extractSyntheticA11yTree();
+    el = window.__antigravityElementMap.get(targetStr) || null;
   }
 
   if (!el && targetStr) {
@@ -202,36 +271,75 @@ function typeIntoElement(targetStr, text) {
     el = document.activeElement;
   }
 
+  // Fallback to active editable element or LinkedIn/general text fields
   if (!el || el === document.body) {
-    el = document.querySelector('input[type="text"]') || document.querySelector('textarea') || document.querySelector('div[contenteditable="true"]');
+    el = document.querySelector('div.ql-editor') ||
+         document.querySelector('div.public-DraftEditor-content') ||
+         document.querySelector('div[contenteditable="true"]') ||
+         document.querySelector('.comments-comment-box__textarea') ||
+         document.querySelector('textarea') ||
+         document.querySelector('input[type="text"]:not([type="hidden"])');
   }
 
-  if (!el) return { success: false, error: 'Campo de texto não encontrado' };
+  if (!el) return { success: false, error: 'Campo de texto interativo não encontrado na página.' };
 
   highlightElement(el);
-  el.focus();
+  try {
+    el.focus();
+    el.dispatchEvent(new Event('focus', { bubbles: true }));
+  } catch (e) {}
 
   try {
-    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-      el.value = text;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    } else {
-      const selection = window.getSelection();
-      if (selection) {
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        selection.removeAllRanges();
-        selection.addRange(range);
+    const isInputOrTextarea = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
+
+    if (isInputOrTextarea) {
+      // Use React native value setter descriptor to bypass React synthetic event tracking override
+      const prototype = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+      const nativeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+      
+      if (nativeValueSetter) {
+        nativeValueSetter.call(el, text);
+      } else {
+        el.value = text;
       }
-      const execSuccess = document.execCommand('insertText', false, text);
-      if (!execSuccess) {
-        el.innerText = text;
-      }
+
       el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: text }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
+    } else {
+      // ContentEditable / Draft.js / Quill / LinkedIn Post & Comment Box
+      let typedOk = false;
+
+      try {
+        const selection = window.getSelection();
+        if (selection) {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+        typedOk = document.execCommand('insertText', false, text);
+      } catch (e) {}
+
+      if (!typedOk) {
+        try {
+          typedOk = document.execCommand('insertHTML', false, text.replace(/\n/g, '<br>'));
+        } catch (e) {}
+      }
+
+      if (!typedOk || !el.innerText || !el.innerText.trim()) {
+        el.innerHTML = text.replace(/\n/g, '<br>');
+      }
+
+      // Dispatch comprehensive event chain for modern rich text editors
+      el.dispatchEvent(new Event('compositionstart', { bubbles: true }));
+      el.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: text }));
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: text }));
+      el.dispatchEvent(new Event('compositionend', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
     }
-    return { success: true, target: targetStr, tagName: el.tagName };
+
+    return { success: true, target: targetStr || 'active_field', tagName: el.tagName };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -244,8 +352,8 @@ async function executeBatchActions(actions) {
     let res = { success: false };
     if (step.action === 'CLICK') {
       res = clickElement(step.target || step.id);
-    } else if (step.action === 'TYPE') {
-      res = typeIntoElement(step.target || step.id, step.text || '');
+    } else if (step.action === 'TYPE' || step.action === 'INSERT_TEXT') {
+      res = typeIntoElement(step.target || step.id || step.selector, step.text || '');
     } else if (step.action === 'SCROLL') {
       window.scrollBy({ top: step.distance || 500, behavior: 'smooth' });
       res = { success: true };
@@ -288,8 +396,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.action === 'AUTOMATE_TYPE') {
-    const res = typeIntoElement(message.target || message.id, message.text || '');
+  if (message.action === 'AUTOMATE_CLICK_TEXT') {
+    const res = clickElementByText(message.target || message.text || message.id);
+    sendResponse(res);
+    return true;
+  }
+
+  if (message.action === 'AUTOMATE_TYPE' || message.action === 'INSERT_TEXT') {
+    const res = typeIntoElement(message.target || message.id || message.selector, message.text || '');
     sendResponse(res);
     return true;
   }
@@ -305,3 +419,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 });
+

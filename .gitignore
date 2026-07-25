@@ -26,3 +26,17 @@ logs/
 .idea/
 *.swp
 *.swo
+
+# Antigravity Memory & Task Trackers
+*.csv
+historico_tarefas_antigravity.csv
+task_history_tracker.md
+.antigravity/
+.gemini/
+.brain/
+brain/
+.artifacts/
+artifacts/
+.env*
+node_modules/
+

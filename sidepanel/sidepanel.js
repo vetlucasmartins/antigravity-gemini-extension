@@ -30,6 +30,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const sendChatBtn = document.getElementById('send-chat-btn');
   const chatMessages = document.getElementById('chat-messages');
 
+  const askInput = document.getElementById('ask-input');
+  const sendAskBtn = document.getElementById('send-ask-btn');
+  const askMessages = document.getElementById('ask-messages');
+
   const outputSection = document.getElementById('output-section');
   const outputContent = document.getElementById('output-content');
   const copyOutputBtn = document.getElementById('copy-output-btn');
@@ -49,7 +53,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentTabContext = null;
   let storedEngineMode = 'web_bridge';
   let storedApiKey = '';
-  let storedModel = 'gemini-2.0-flash';
+  let storedModel = 'gemini-2.5-flash';
 
   async function getActiveWebTab() {
     const tabs = await chrome.tabs.query({ active: true });
@@ -173,6 +177,50 @@ document.addEventListener('DOMContentLoaded', async () => {
     chatMessages.scrollTop = chatMessages.scrollHeight;
     saveChatMessageToMemory('system', text);
     return sysDiv;
+  }
+
+  function appendThoughtMsg(text) {
+    if (chatMessages.lastElementChild && chatMessages.lastElementChild.textContent === text && chatMessages.lastElementChild.classList.contains('thought')) {
+      return chatMessages.lastElementChild;
+    }
+    const thoughtDiv = document.createElement('div');
+    thoughtDiv.className = 'chat-msg thought';
+    thoughtDiv.textContent = text;
+    chatMessages.appendChild(thoughtDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return thoughtDiv;
+  }
+
+  function appendCorrectionMsg(text) {
+    if (chatMessages.lastElementChild && chatMessages.lastElementChild.textContent === text && chatMessages.lastElementChild.classList.contains('correction')) {
+      return chatMessages.lastElementChild;
+    }
+    const corrDiv = document.createElement('div');
+    corrDiv.className = 'chat-msg correction';
+    corrDiv.textContent = text;
+    chatMessages.appendChild(corrDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return corrDiv;
+  }
+
+  function appendAskUserMsg(text) {
+    if (!askMessages) return null;
+    const userDiv = document.createElement('div');
+    userDiv.className = 'chat-msg user';
+    userDiv.textContent = text;
+    askMessages.appendChild(userDiv);
+    askMessages.scrollTop = askMessages.scrollHeight;
+    return userDiv;
+  }
+
+  function appendAskGeminiMsg(text) {
+    if (!askMessages) return null;
+    const geminiDiv = document.createElement('div');
+    geminiDiv.className = 'chat-msg agent';
+    geminiDiv.textContent = text;
+    askMessages.appendChild(geminiDiv);
+    askMessages.scrollTop = askMessages.scrollHeight;
+    return geminiDiv;
   }
 
   // Check Web Session Login State
@@ -339,11 +387,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // 4. Autonomous Computer Use Vision Loop Engine
+  // 4. Autonomous Computer Use Vision & Chain-of-Thought Diagnostic Loop Engine
   async function runAutonomousComputerUseLoop(userGoal) {
-    const maxSteps = 8;
+    const maxSteps = 10;
     let step = 0;
     let isDone = false;
+    let lastActionResult = null;
+    let previousActionsHistory = [];
 
     appendSystemMsg(`🤖 Loop Agêntico Autônomo Iniciado: "${userGoal}"`);
 
@@ -370,21 +420,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      const computerUseSystemInstruction = `Você é o Antigravity Autonomous Computer Use Agent (Universal Web Copilot). Seu objetivo é navegar e interagir autonomamente na aba ativa para cumprir a meta do usuário.
-Você atua em QUALQUER site (Upwork, LinkedIn, X, Threads, plataformas freelance, etc.).
+      // Format previous execution feedback & detect repeated failure loops
+      let actionFeedbackStr = '';
+      if (lastActionResult) {
+        if (lastActionResult.success) {
+          actionFeedbackStr = `\n[RESULTADO DA AÇÃO ANTERIOR]: Sucesso (${lastActionResult.action} em "${lastActionResult.target || 'N/A'}")`;
+        } else {
+          actionFeedbackStr = `\n⚠️ [FALHA NA AÇÃO ANTERIOR]: A ação "${lastActionResult.action}" em "${lastActionResult.target || 'N/A'}" falhou. Motivo: "${lastActionResult.error || 'Não encontrado ou invisível'}". Aplique sua estratégia de fallback!`;
+        }
+      }
+
+      // Check for repeated action loops
+      let loopWarningStr = '';
+      const recentSameActionCount = previousActionsHistory.filter(a => lastActionResult && a.target === lastActionResult.target && a.action === lastActionResult.action).length;
+      if (recentSameActionCount >= 2) {
+        loopWarningStr = `\n🚨 [ALERTA DE DIAGNÓSTICO DE TRAVAMENTO]: A ação "${lastActionResult?.action}" no elemento "${lastActionResult?.target}" falhou repetidamente. O elemento pode estar oculto por um modal, em um iframe ou ter ID dinâmico. Mude obrigatoriamente de estratégia: tente click_text, role a página ou use read_section.`;
+      }
+
+      const computerUseSystemInstruction = `Você é o Antigravity Autonomous Computer Use Agent (Universal Web Copilot Raciocinador). Seu objetivo é navegar e interagir autonomamente na aba ativa para cumprir a meta do usuário.
+Você atua em QUALQUER site (Upwork, LinkedIn, X, Threads, plataformas de trabalho, etc.).
 ${memoryContextStr}
-A cada etapa, analise o contexto/tela e responda EXCLUSIVAMENTE com um objeto JSON válido seguindo a estrutura:
+Instrução de Inteligência Raciocinadora (Chain-of-Thought):
+A cada etapa, analise criticamente a tela antes de agir. Identifique o que mudou, formule um diagnóstico e planeje a próxima ação com uma estratégia secundária de reserva (fallback).
+
+Responda EXCLUSIVAMENTE com um objeto JSON válido seguindo a estrutura:
 
 {
-  "explanation": "Descreva em português o que você está executando nesta ação.",
-  "action": "click" | "click_coordinate" | "type" | "scroll" | "done",
-  "target": "seletor CSS ou texto visível do botão/link",
-  "coordinate": { "x": 100, "y": 200 },
+  "thought": "Explicação analítica em português sobre o estado da tela, diagnóstico da etapa anterior e justificativa da próxima ação.",
+  "observation": "O que você notou na tela (ex: modal aberto, campo limpo, botão desabilitado).",
+  "action": "click" | "click_text" | "type" | "scroll" | "read_section" | "wait" | "done",
+  "target": "ID do elemento ex: e1, e2, seletor CSS OU texto do botão/link se a ação for click_text",
   "text": "texto para digitar se a acao for type",
+  "fallback_strategy": "Plano de reserva caso a ação principal falhe",
   "isDone": false
 }`;
 
-      const prompt = `[META GERAL DO USUÁRIO]: "${userGoal}"\n[ETAPA ATUAL]: ${step} de ${maxSteps}`;
+      const pageStructureStr = currentTabContext?.a11yTree || currentTabContext?.pageText || '(Estrutura de elementos não carregada)';
+      const prompt = `[META GERAL DO USUÁRIO]: "${userGoal}"
+[PÁGINA ATUAL]: ${currentTabContext?.title || 'N/A'} | URL: ${currentTabContext?.url || 'N/A'}
+[ETAPA ATUAL]: ${step} de ${maxSteps}${actionFeedbackStr}${loopWarningStr}
+
+[ESTRUTURA DE ELEMENTOS INTERATIVOS NA TELA]:
+${pageStructureStr}`;
 
       let apiResponse = null;
 
@@ -410,7 +487,7 @@ A cada etapa, analise o contexto/tela e responda EXCLUSIVAMENTE com um objeto JS
       }
 
       if (!apiResponse || !apiResponse.success) {
-        appendAgentMsg(`❌ Erro na etapa ${step}: ${apiResponse?.error || 'Falha de comunicação'}`);
+        appendAgentMsg(`❌ Erro na etapa ${step}: ${apiResponse?.error || 'Falha de comunicação com o modelo'}`);
         break;
       }
 
@@ -432,24 +509,24 @@ A cada etapa, analise o contexto/tela e responda EXCLUSIVAMENTE com um objeto JS
 
         if (clickMatch && clickMatch[1]) {
           actionObj = {
-            explanation: `Extraído texto conversacional: Clicando em "${clickMatch[1].trim()}"`,
-            action: 'click',
+            thought: `Extraído raciocínio de texto conversacional: Clicando em "${clickMatch[1].trim()}"`,
+            action: 'click_text',
             target: clickMatch[1].trim()
           };
         } else if (typeMatch && typeMatch[1]) {
           actionObj = {
-            explanation: `Extraído texto conversacional: Digitando "${typeMatch[1].trim()}"`,
+            thought: `Extraído raciocínio de texto conversacional: Digitando no campo ativo`,
             action: 'type',
             text: typeMatch[1].trim()
           };
         } else if (isScroll) {
           actionObj = {
-            explanation: `Extraído texto conversacional: Roolando página...`,
+            thought: `Extraído raciocínio de texto conversacional: Rolando para revelar conteúdo`,
             action: 'scroll'
           };
         } else if (isCompleted) {
           actionObj = {
-            explanation: `Meta concluída segundo a resposta.`,
+            thought: `Meta concluída conforme resposta conversacional`,
             action: 'done',
             isDone: true
           };
@@ -463,62 +540,108 @@ A cada etapa, analise o contexto/tela e responda EXCLUSIVAMENTE com um objeto JS
         break;
       }
 
-      appendAgentMsg(`📍 [Etapa ${step}]: ${actionObj.explanation}`);
+      // Display agent's internal thought process in the chat UI
+      if (actionObj.thought) {
+        appendThoughtMsg(`🧠 Raciocínio (Passo ${step}): ${actionObj.thought}`);
+      }
+
+      appendAgentMsg(`📍 [Etapa ${step}]: Executando ${actionObj.action} -> ${actionObj.target || actionObj.text || 'N/A'}`);
       outputSection.classList.remove('hidden');
-      outputContent.textContent = `Ação: ${actionObj.action} | Detalhes: ${actionObj.target || actionObj.text || 'N/A'}`;
+      outputContent.textContent = `Ação: ${actionObj.action} | Alvo: ${actionObj.target || actionObj.text || 'N/A'}\nEstratégia Reserva: ${actionObj.fallback_strategy || 'N/A'}`;
 
       if (actionObj.isDone || actionObj.action === 'done') {
         isDone = true;
-        footerStatus.textContent = 'Status: Loop Autônomo Concluído!';
+        footerStatus.textContent = 'Status: Meta Concluída!';
         appendSystemMsg(`✅ Meta Concluída com Sucesso!`);
         logToPersistentBridgeMemory({
           category: 'Loop Autônomo',
           prompt: userGoal,
           actions: `Concluído no passo ${step}/${maxSteps}`,
           status: 'Sucesso',
-          result_summary: actionObj.explanation || 'Meta concluída',
+          result_summary: actionObj.thought || actionObj.explanation || 'Meta concluída',
           url: currentTabContext ? currentTabContext.url : ''
         });
         break;
       }
 
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab) break;
+      if (!tab) {
+        appendAgentMsg(`❌ Aba ativa não encontrada para executar a ação.`);
+        break;
+      }
+
+      let stepResult = { success: false, error: 'Ação não reconhecida' };
 
       if (actionObj.action === 'click_coordinate' && actionObj.coordinate) {
-        await new Promise(r => chrome.tabs.sendMessage(tab.id, {
+        stepResult = await new Promise(r => chrome.tabs.sendMessage(tab.id, {
           action: 'CLICK_COORDINATE',
           x: actionObj.coordinate.x,
           y: actionObj.coordinate.y
         }, r));
+      } else if (actionObj.action === 'click_text' && actionObj.target) {
+        stepResult = await new Promise(r => chrome.tabs.sendMessage(tab.id, {
+          action: 'AUTOMATE_CLICK_TEXT',
+          target: actionObj.target
+        }, r));
       } else if (actionObj.action === 'click' && actionObj.target) {
-        await new Promise(r => chrome.tabs.sendMessage(tab.id, {
+        stepResult = await new Promise(r => chrome.tabs.sendMessage(tab.id, {
           action: 'AUTOMATE_CLICK',
           target: actionObj.target
         }, r));
-      } else if (actionObj.action === 'type' && actionObj.text) {
-        await new Promise(r => chrome.tabs.sendMessage(tab.id, {
+
+        // Auto-correction local fallback: if click by ID failed, try text search click
+        if (!stepResult || !stepResult.success) {
+          appendCorrectionMsg(`⚡ Auto-correção local: Clique por ID/seletor falhou. Tentando busca por texto "${actionObj.target}"...`);
+          stepResult = await new Promise(r => chrome.tabs.sendMessage(tab.id, {
+            action: 'AUTOMATE_CLICK_TEXT',
+            target: actionObj.target
+          }, r));
+        }
+      } else if (actionObj.action === 'type' && (actionObj.text || actionObj.target)) {
+        stepResult = await new Promise(r => chrome.tabs.sendMessage(tab.id, {
           action: 'AUTOMATE_TYPE',
-          selector: actionObj.target || '',
-          text: actionObj.text
+          target: actionObj.target || '',
+          text: actionObj.text || ''
         }, r));
+      } else if (actionObj.action === 'read_section') {
+        const readRes = await new Promise(r => chrome.tabs.sendMessage(tab.id, {
+          action: 'READ_SECTION',
+          target: actionObj.target
+        }, r));
+        stepResult = { success: true, text: readRes?.text || '' };
+        if (readRes?.text) {
+          appendAgentMsg(`📖 Conteúdo lido da seção:\n${readRes.text.slice(0, 300)}...`);
+        }
+      } else if (actionObj.action === 'wait') {
+        await new Promise(r => setTimeout(r, 2000));
+        stepResult = { success: true };
       } else if (actionObj.action === 'scroll') {
-        await new Promise(r => chrome.tabs.sendMessage(tab.id, {
+        stepResult = await new Promise(r => chrome.tabs.sendMessage(tab.id, {
           action: 'AUTOMATE_SCROLL',
           distance: 500
         }, r));
       }
 
+      lastActionResult = {
+        action: actionObj.action,
+        target: actionObj.target || actionObj.text || 'N/A',
+        success: stepResult && stepResult.success,
+        error: stepResult ? stepResult.error : 'Sem resposta do script de conteúdo'
+      };
+
+      previousActionsHistory.push(lastActionResult);
+
       logToPersistentBridgeMemory({
         category: 'Passo Autônomo',
         prompt: userGoal,
         actions: `${actionObj.action}: ${actionObj.target || actionObj.text || 'N/A'}`,
-        status: 'Executado',
-        result_summary: actionObj.explanation || '',
+        status: lastActionResult.success ? 'Sucesso' : `Falha: ${lastActionResult.error}`,
+        result_summary: actionObj.thought || '',
         url: tab ? tab.url : ''
       });
 
-      await new Promise(r => setTimeout(r, 2200));
+      // Short delay for DOM render before next step
+      await new Promise(r => setTimeout(r, 1800));
     }
   }
 
@@ -598,6 +721,75 @@ A cada etapa, analise o contexto/tela e responda EXCLUSIVAMENTE com um objeto JS
       sendChatBtn.click();
     }
   });
+
+  // 6. Direct Q&A Tirador de Dúvidas Handler (Gemini Direct Q&A Mode)
+  if (sendAskBtn) {
+    sendAskBtn.addEventListener('click', async () => {
+      const question = askInput.value.trim();
+      if (!question) return;
+
+      appendAskUserMsg(question);
+      askInput.value = '';
+
+      const geminiDiv = appendAskGeminiMsg('Consultando Gemini...');
+      footerStatus.textContent = 'Status: Consultando Gemini (Tirador de Dúvidas)...';
+      outputSection.classList.remove('hidden');
+      outputContent.textContent = 'Processando consulta Q&A com o contexto da aba...';
+
+      await refreshPageContext();
+
+      let fullPrompt = `[CONTEXTO DA ABA ATIVA]:\nTítulo: ${currentTabContext?.title || 'N/A'}\nURL: ${currentTabContext?.url || 'N/A'}\n`;
+      if (currentTabContext?.selectedText) {
+        fullPrompt += `[TEXTO SELECIONADO PELO USUÁRIO]:\n"${currentTabContext.selectedText}"\n\n`;
+      }
+      if (currentTabContext?.pageText) {
+        fullPrompt += `[CONTEÚDO DA PÁGINA]:\n${currentTabContext.pageText.slice(0, 3000)}\n\n`;
+      }
+      fullPrompt += `[DÚVIDA DO USUÁRIO]:\n${question}`;
+
+      let apiResponse = null;
+      const activeModel = modelSelect.value || storedModel;
+
+      if (storedEngineMode === 'api' || storedApiKey) {
+        const activeKey = apiKeyInput.value.trim() || storedApiKey;
+        apiResponse = await new Promise(r => {
+          chrome.runtime.sendMessage({
+            action: 'CALL_GEMINI_API',
+            apiKey: activeKey,
+            model: activeModel,
+            prompt: fullPrompt,
+            systemInstruction: 'Você é o especialista Gemini (Tirador de Dúvidas da Extensão Antigravity). Responda de forma clara, direta e objetiva às dúvidas do usuário sobre a página em português.'
+          }, r);
+        });
+      } else {
+        apiResponse = await new Promise(r => {
+          chrome.runtime.sendMessage({
+            action: 'CALL_GEMINI_WEB_BRIDGE',
+            prompt: fullPrompt
+          }, r);
+        });
+      }
+
+      if (apiResponse && apiResponse.success) {
+        geminiDiv.textContent = apiResponse.text;
+        outputContent.textContent = apiResponse.text;
+        footerStatus.textContent = 'Status: Dúvida respondida!';
+      } else {
+        geminiDiv.textContent = `❌ ${apiResponse?.error || 'Erro na resposta do Gemini'}`;
+        outputContent.textContent = `❌ ${apiResponse?.error || 'Erro na resposta do Gemini'}`;
+        footerStatus.textContent = 'Status: Erro';
+      }
+    });
+
+    if (askInput) {
+      askInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendAskBtn.click();
+        }
+      });
+    }
+  }
 
   // Automations Presets
   const wfUpworkHunter = document.getElementById('wf-upwork-hunter');
